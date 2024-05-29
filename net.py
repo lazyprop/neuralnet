@@ -4,11 +4,12 @@ import numpy as np
 rng = np.random.default_rng()
 
 class Network:
-    def __init__(self, shape, activ_fn):
+    def __init__(self, shape, activ_fn, grad_activ):
         assert len(shape) >= 2
         self.depth = len(shape)
         self.shape = shape
         self.activ_fn = activ_fn
+        self.grad_activ = grad_activ
         self.weights = [rng.standard_normal((y, x)) for x, y in zip(shape[:-1], shape[1:])]
         self.biases = [rng.standard_normal(x) for x in shape[1:]]
         self.grad_b = [np.zeros_like(b) for b in self.biases]
@@ -32,10 +33,10 @@ class Network:
     must be invoked after a forward pass
     gradients are added to self.grad_b and self.grad_w respectively
     '''
-    def backward(self, y: np.array, loss, grad_loss, grad_activ):
-        delta = [grad_loss(y, self.a_l[-1]) * grad_activ(self.z_l[-1])]
+    def backward(self, y: np.array, loss, grad_loss):
+        delta = [grad_loss(self.a_l[-1], y) * self.grad_activ(self.z_l[-1])]
         for z, w in zip(self.z_l[-2:0:-1], self.weights[::-1]):
-            delta.append((w.transpose() @ delta[-1]) * grad_activ(z))
+            delta.append((w.transpose() @ delta[-1]) * self.grad_activ(z))
         delta.reverse()
         grad_b = delta
         grad_w = [a * d[:, None] for a, d in zip(self.a_l[:-1], delta)]
@@ -62,10 +63,12 @@ class Network:
         self.grad_w = [np.zeros_like(w) for w in self.weights]
 
 sigmoid = lambda x: 1 / (1 + np.exp(-x))
-mse = lambda x, y: np.sum((x - y) ** 2) / (2 * len(x))
-grad_mse = lambda y0, y: y - y0
 grad_sigmoid = lambda x: sigmoid(x) * (1 - sigmoid(x))
-learning_rate = 3
+mse = lambda x, y: np.sum((x - y) ** 2) / (2 * len(x))
+grad_mse = lambda y0, y: y0 - y
+relu = lambda x: np.maximum(0, x)
+grad_relu = lambda x: relu(x) / x
+learning_rate = 0.1
 batch_size = 100
 
 def update_minibatch(net, minibatch):
@@ -74,14 +77,14 @@ def update_minibatch(net, minibatch):
     for x, y in minibatch:
         pred = net.forward(x)
         err += mse(y, pred)
-        net.backward(y, mse, grad_mse, grad_sigmoid)
+        net.backward(y, mse, grad_mse)
     net.sgd_step(batch_size, learning_rate)
     return err
         
 def main():
     N = 10000
-    f = lambda x: np.sin(x * 2)
-    net = Network((1, 5, 10, 5, 1), sigmoid)
+    f = lambda x: np.sin(x * 3)
+    net = Network((1, 5, 10, 5, 1), relu, grad_relu)
 
     training_data = []
     for _ in range(N):
